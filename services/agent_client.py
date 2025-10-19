@@ -49,10 +49,11 @@ class AgentCoreClient:
 
     def is_available(self) -> bool:
         """AgentCoreが利用可能かチェック"""
-        has_profile = bool(self.aws_profile)
+        # AWS_BEDROCK_AGENT_IDが設定されていれば利用可能
+        # App Runnerの場合、IAMロールで認証するためAWS_PROFILEは不要
         has_agent_id = bool(self.agent_id)
 
-        return has_profile and has_agent_id
+        return has_agent_id
 
     def invoke_agent(
         self,
@@ -91,7 +92,9 @@ class AgentCoreClient:
 
             # 環境変数の設定
             env = os.environ.copy()
-            env['AWS_PROFILE'] = self.aws_profile
+            # AWS_PROFILEが設定されている場合のみ追加（App RunnerではIAMロールを使用）
+            if self.aws_profile:
+                env['AWS_PROFILE'] = self.aws_profile
 
             # agentcoreディレクトリに移動して実行
             agents_dir = os.path.join(
