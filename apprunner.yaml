@@ -10,8 +10,7 @@ build:
       - echo "Installing application dependencies..."
       - pip install -r requirements.txt
     post-build:
-      - echo "Running database migrations..."
-      - python manage.py migrate --noinput
+      - echo "Build completed successfully"
 
 run:
   runtime-version: 3.8
