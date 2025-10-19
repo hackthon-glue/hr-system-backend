@@ -23,7 +23,7 @@ run:
     - name: DEBUG
       value: "False"
     - name: ALLOWED_HOSTS
-      value: "by33j6ufau.ap-northeast-1.awsapprunner.com"
+      value: "*"
     - name: DB_NAME
       value: "hr_agent_db"
     - name: DB_USER
