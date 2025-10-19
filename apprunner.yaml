@@ -1,8 +1,5 @@
 version: 1.0
-
-runtime:
-  name: python3
-  runtime-version: 3.10
+runtime: python3
 
 build:
   commands:
@@ -17,6 +14,7 @@ build:
       - python manage.py migrate --noinput
 
 run:
+  runtime-version: 3.11
   command: gunicorn hr_agent_system.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --access-logfile - --error-logfile -
   env:
     - name: PYTHONUNBUFFERED
