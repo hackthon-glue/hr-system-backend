@@ -25,6 +25,9 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Health Check at root for App Runner
+    path('', lambda request: JsonResponse({'status': 'healthy', 'service': 'hr-agent-system'})),
+
     # Admin
     path('admin/', admin.site.urls),
 
