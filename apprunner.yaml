@@ -42,3 +42,5 @@ run:
       value: "https://your-frontend.com"
     - name: LOG_LEVEL
       value: "INFO"
+    - name: SECURE_SSL_REDIRECT
+      value: "False"
