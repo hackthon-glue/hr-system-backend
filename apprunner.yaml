@@ -1,5 +1,9 @@
 version: 1.0
-runtime: python3
+
+runtime:
+  name: python3
+  runtime-version: 3.11
+
 build:
   commands:
     pre-build:
@@ -11,13 +15,14 @@ build:
     post-build:
       - echo "Running database migrations..."
       - python manage.py migrate --noinput
+
 run:
-  runtime-version: "3.11"
   command: gunicorn hr_agent_system.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --access-logfile - --error-logfile -
-  network:
-    port: 8000
   env:
     - name: PYTHONUNBUFFERED
       value: "1"
     - name: PYTHONDONTWRITEBYTECODE
       value: "1"
+
+network:
+  port: 8000
