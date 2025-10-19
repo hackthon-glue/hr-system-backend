@@ -31,7 +31,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework_simplejwt',
     'drf_yasg',
-    'channels',
 
     # Local apps
     'authz',
@@ -71,17 +70,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'hr_agent_system.wsgi.application'
-ASGI_APPLICATION = 'hr_agent_system.asgi.application'
-
-# Channels configuration
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [(config('REDIS_HOST', default='localhost'), config('REDIS_PORT', default=6379, cast=int))],
-        },
-    },
-}
 
 # Database
 # Use PostgreSQL in production (when DB_NAME is set), SQLite for development
