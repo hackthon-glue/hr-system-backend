@@ -1,0 +1,12 @@
+django==5.2.7
+djangorestframework==3.16.1
+django-cors-headers==4.9.0
+djangorestframework-simplejwt==5.5.1
+python-decouple==3.8
+psycopg2-binary==2.9.11
+boto3==1.40.55
+pillow==11.0.0
+gunicorn==23.0.0
+drf-yasg==1.21.8
+channels==4.2.0
+daphne==4.2.0
