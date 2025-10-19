@@ -4,7 +4,7 @@ django-cors-headers==4.9.0
 djangorestframework-simplejwt==5.5.1
 python-decouple==3.8
 psycopg2-binary==2.9.11
-boto3==1.40.55
+boto3>=1.40.38,<1.41.0
 pillow==11.0.0
 gunicorn==23.0.0
 drf-yasg==1.21.8
