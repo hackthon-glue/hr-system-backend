@@ -23,3 +23,27 @@ run:
       value: "1"
     - name: PYTHONDONTWRITEBYTECODE
       value: "1"
+    - name: SECRET_KEY
+      value: "jNKHMTa686yBb8eHxkPg17D4WRA6lWGbdUjUixo0JcACuQ2qiMgkp-JSBlj1OEIMTAE"
+    - name: DEBUG
+      value: "False"
+    - name: ALLOWED_HOSTS
+      value: "by33j6ufau.ap-northeast-1.awsapprunner.com"
+    - name: DB_NAME
+      value: "hr_agent_db"
+    - name: DB_USER
+      value: "postgres"
+    - name: DB_PASSWORD
+      value: "postgres1005"
+    - name: DB_HOST
+      value: "aws-hackthon-deploy-db.cgopafft6i56.ap-northeast-1.rds.amazonaws.com"
+    - name: DB_PORT
+      value: "5432"
+    - name: AWS_REGION
+      value: "ap-northeast-1"
+    - name: AWS_BEDROCK_AGENT_ID
+      value: "HrAgent-uVxcle2LzN"
+    - name: CORS_ALLOWED_ORIGINS
+      value: "https://your-frontend.com"
+    - name: LOG_LEVEL
+      value: "INFO"

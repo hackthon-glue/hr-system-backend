@@ -1,0 +1,51 @@
+==============================================
+App Runner 環境変数設定値
+==============================================
+
+サービスURL: by33j6ufau.ap-northeast-1.awsapprunner.com
+
+以下の値をApp Runnerコンソールで設定してください：
+
+SECRET_KEY=jNKHMTa686yBb8eHxkPg17D4WRA6lWGbdUjUixo0JcACuQ2qiMgkp-JSBlj1OEIMTAE
+
+DEBUG=False
+
+ALLOWED_HOSTS=by33j6ufau.ap-northeast-1.awsapprunner.com
+
+DB_NAME=hr_agent_db
+
+DB_USER=postgres
+
+DB_PASSWORD=postgres1005
+
+DB_HOST=aws-hackthon-deploy-db.cgopafft6i56.ap-northeast-1.rds.amazonaws.com
+
+DB_PORT=5432
+
+AWS_REGION=ap-northeast-1
+
+AWS_BEDROCK_AGENT_ID=HrAgent-uVxcle2LzN
+
+CORS_ALLOWED_ORIGINS=https://your-frontend.com
+
+LOG_LEVEL=INFO
+
+==============================================
+設定手順：
+
+1. App Runnerコンソールを開く:
+   https://ap-northeast-1.console.aws.amazon.com/apprunner/home?region=ap-northeast-1#/services/hr-system-backend
+
+2. サービスを選択 → Configuration タブ
+
+3. Environment variables セクションで Edit をクリック
+
+4. 上記の環境変数を1つずつ追加
+
+5. Save → 自動的に再デプロイが開始されます
+
+==============================================
+注意:
+- CORS_ALLOWED_ORIGINS はフロントエンドのURLに変更
+- 本番環境では DB_PASSWORD も変更を推奨
+==============================================
