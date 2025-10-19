@@ -2,7 +2,7 @@ version: 1.0
 
 runtime:
   name: python3
-  runtime-version: 3.11
+  runtime-version: 3.10
 
 build:
   commands:
