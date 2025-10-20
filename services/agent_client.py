@@ -17,30 +17,35 @@ class AgentCoreClient:
     def __init__(self):
         """クライアントを初期化"""
         self.region = settings.AWS_REGION
-        self.agent_id = settings.AWS_BEDROCK_AGENT_ID
+        self.runtime_id = settings.AWS_BEDROCK_AGENT_ID  # Runtime ID (e.g., HrAgent-uVxcle2LzN)
+        self.account_id = "553113730995"  # AWS Account ID
+
+        # Agent Runtime ARNを構築
+        self.agent_runtime_arn = f"arn:aws:bedrock-agentcore:{self.region}:{self.account_id}:runtime/{self.runtime_id}"
 
         # boto3クライアントを初期化
         try:
             import boto3
             self.client = boto3.client(
-                'bedrock-agent-runtime',
+                'bedrock-agentcore',
                 region_name=self.region
             )
-            logger.info(f"Bedrock Agent Runtime client initialized")
+            logger.info(f"Bedrock AgentCore client initialized")
             logger.info(f"Region: {self.region}")
-            logger.info(f"Agent ID: {self.agent_id}")
+            logger.info(f"Runtime ID: {self.runtime_id}")
+            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
         except Exception as e:
             logger.error(f"Failed to initialize boto3 client: {e}", exc_info=True)
             self.client = None
 
     def is_available(self) -> bool:
-        """Bedrock Agentが利用可能かチェック"""
+        """Bedrock AgentCoreが利用可能かチェック"""
         has_client = self.client is not None
-        has_agent_id = bool(self.agent_id)
+        has_runtime_id = bool(self.runtime_id)
 
-        is_avail = has_client and has_agent_id
+        is_avail = has_client and has_runtime_id
         if not is_avail:
-            logger.warning(f"Bedrock Agent not available: client={has_client}, agent_id={has_agent_id}")
+            logger.warning(f"Bedrock AgentCore not available: client={has_client}, runtime_id={has_runtime_id}")
 
         return is_avail
 
@@ -49,62 +54,71 @@ class AgentCoreClient:
         prompt: str,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        qualifier: str = "TSTALIASID",
+        qualifier: str = "DEFAULT",
         enable_trace: bool = False
     ) -> Dict[str, Any]:
         """
-        Bedrock Agent Runtimeを呼び出し
+        Bedrock AgentCoreを呼び出し
 
         Args:
             prompt: 入力プロンプト
-            session_id: セッションID（会話の継続に使用）
+            session_id: セッションID（会話の継続に使用、33文字以上必要）
             user_id: ユーザーID
-            qualifier: エージェントエイリアスID（デフォルト: TSTALIASID）
+            qualifier: エンドポイント識別子（デフォルト: DEFAULT）
             enable_trace: トレースを有効化
 
         Returns:
             エージェントからのレスポンス
         """
         if not self.is_available():
-            logger.warning("Bedrock Agent is not available, returning mock response")
-            return self._mock_response(prompt)
+            logger.error("Bedrock AgentCore is not available")
+            raise Exception("Bedrock AgentCore is not configured properly")
 
         try:
-            # セッションIDが指定されていない場合は生成
+            # セッションIDが指定されていない場合は生成（33文字以上）
             if not session_id:
-                session_id = str(uuid.uuid4())
+                session_id = f"{user_id or 'user'}-{uuid.uuid4().hex}"
 
-            logger.info(f"Invoking Bedrock Agent Runtime with prompt: {prompt[:100]}...")
+            # セッションIDが33文字未満の場合は調整
+            if len(session_id) < 33:
+                session_id = f"{session_id}-{uuid.uuid4().hex}"[:33]
+
+            logger.info(f"Invoking Bedrock AgentCore with prompt: {prompt[:100]}...")
             logger.info(f"Session ID: {session_id}")
+            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
 
-            # Bedrock Agent Runtimeを呼び出し
-            response = self.client.invoke_agent(
-                agentId=self.agent_id,
-                agentAliasId=qualifier,
-                sessionId=session_id,
-                inputText=prompt
+            # Payloadを構築
+            payload = json.dumps({
+                "input": {"prompt": prompt}
+            })
+
+            # Bedrock AgentCoreを呼び出し
+            response = self.client.invoke_agent_runtime(
+                agentRuntimeArn=self.agent_runtime_arn,
+                runtimeSessionId=session_id,
+                payload=payload,
+                qualifier=qualifier
             )
 
-            # ストリーミングレスポンスを処理
-            completion_text = ""
-            for event in response.get('completion', []):
-                if 'chunk' in event:
-                    chunk = event['chunk']
-                    if 'bytes' in chunk:
-                        completion_text += chunk['bytes'].decode('utf-8')
+            # レスポンスボディを読み取り
+            response_body = response['response'].read()
+            response_data = json.loads(response_body)
 
-            logger.info(f"Bedrock Agent Runtime invocation successful")
+            # Completionテキストを抽出
+            completion_text = response_data.get('output', {}).get('text', '') if isinstance(response_data.get('output'), dict) else str(response_data.get('output', ''))
+
+            logger.info(f"Bedrock AgentCore invocation successful")
             logger.info(f"Completion length: {len(completion_text)}")
 
             return {
                 'completion': completion_text,
-                'raw_result': response,
+                'raw_result': response_data,
                 'session_id': session_id,
-                'content_type': 'text/plain'
+                'content_type': 'application/json'
             }
 
         except Exception as e:
-            logger.error(f"Unexpected error invoking agent: {e}", exc_info=True)
+            logger.error(f"Unexpected error invoking AgentCore: {e}", exc_info=True)
             raise
 
     def invoke_with_retry(
