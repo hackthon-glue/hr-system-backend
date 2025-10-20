@@ -23,10 +23,10 @@ class AgentCoreClient:
         try:
             import boto3
             self.client = boto3.client(
-                'bedrock-agentcore',
+                'bedrock-agent-runtime',
                 region_name=self.region
             )
-            logger.info(f"Bedrock AgentCore client initialized")
+            logger.info(f"Bedrock Agent Runtime client initialized")
             logger.info(f"Region: {self.region}")
             logger.info(f"Agent ID: {self.agent_id}")
         except Exception as e:
@@ -49,7 +49,7 @@ class AgentCoreClient:
         prompt: str,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        qualifier: str = "DEFAULT",
+        qualifier: str = "TSTALIASID",
         enable_trace: bool = False
     ) -> Dict[str, Any]:
         """
@@ -59,7 +59,7 @@ class AgentCoreClient:
             prompt: 入力プロンプト
             session_id: セッションID（会話の継続に使用）
             user_id: ユーザーID
-            qualifier: エンドポイント識別子（デフォルト: DEFAULT）
+            qualifier: エージェントエイリアスID（デフォルト: TSTALIASID）
             enable_trace: トレースを有効化
 
         Returns:
@@ -74,27 +74,31 @@ class AgentCoreClient:
             if not session_id:
                 session_id = str(uuid.uuid4())
 
-            logger.info(f"Invoking Bedrock AgentCore with prompt: {prompt[:100]}...")
+            logger.info(f"Invoking Bedrock Agent Runtime with prompt: {prompt[:100]}...")
             logger.info(f"Session ID: {session_id}")
 
-            # Bedrock AgentCoreを呼び出し
-            response = self.client.invoke_runtime(
-                runtimeId=self.agent_id,
+            # Bedrock Agent Runtimeを呼び出し
+            response = self.client.invoke_agent(
+                agentId=self.agent_id,
+                agentAliasId=qualifier,
                 sessionId=session_id,
-                endpointQualifier=qualifier,
                 inputText=prompt
             )
 
-            # レスポンスを処理
-            result = response.get('result', {})
-            completion_text = result.get('result', '') if isinstance(result, dict) else str(result)
+            # ストリーミングレスポンスを処理
+            completion_text = ""
+            for event in response.get('completion', []):
+                if 'chunk' in event:
+                    chunk = event['chunk']
+                    if 'bytes' in chunk:
+                        completion_text += chunk['bytes'].decode('utf-8')
 
-            logger.info(f"Bedrock AgentCore invocation successful")
+            logger.info(f"Bedrock Agent Runtime invocation successful")
             logger.info(f"Completion length: {len(completion_text)}")
 
             return {
                 'completion': completion_text,
-                'raw_result': result,
+                'raw_result': response,
                 'session_id': session_id,
                 'content_type': 'text/plain'
             }
