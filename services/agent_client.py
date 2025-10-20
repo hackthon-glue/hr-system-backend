@@ -53,6 +53,8 @@ class AgentCoreClient:
         # App Runnerの場合、IAMロールで認証するためAWS_PROFILEは不要
         has_agent_id = bool(self.agent_id)
 
+        logger.info(f"is_available check: agent_id='{self.agent_id}', has_agent_id={has_agent_id}")
+
         return has_agent_id
 
     def invoke_agent(
