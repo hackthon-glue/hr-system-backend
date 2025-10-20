@@ -26,10 +26,25 @@ class AgentCoreClient:
         # boto3クライアントを初期化
         try:
             import boto3
-            self.client = boto3.client(
-                'bedrock-agentcore',
-                region_name=self.region
-            )
+            import os
+
+            # ローカル開発環境ではAWS_PROFILEを使用、本番環境ではInstance Roleを使用
+            client_kwargs = {
+                'service_name': 'bedrock-agentcore',
+                'region_name': self.region
+            }
+
+            # ローカル開発環境の検出（DEBUGモードまたはAWS_PROFILE環境変数が設定されている場合）
+            if settings.DEBUG and os.environ.get('AWS_PROFILE'):
+                # ローカル開発: AWS_PROFILEを使用
+                session = boto3.Session(profile_name=os.environ.get('AWS_PROFILE'))
+                self.client = session.client(**client_kwargs)
+                logger.info(f"Using AWS profile: {os.environ.get('AWS_PROFILE')}")
+            else:
+                # 本番環境: Instance Roleを使用
+                self.client = boto3.client(**client_kwargs)
+                logger.info(f"Using Instance Role credentials")
+
             logger.info(f"Bedrock AgentCore client initialized")
             logger.info(f"Region: {self.region}")
             logger.info(f"Runtime ID: {self.runtime_id}")
