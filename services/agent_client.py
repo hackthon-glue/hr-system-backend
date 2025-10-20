@@ -1,12 +1,10 @@
 """
 AWS Bedrock AgentCore クライアント
-agentcore CLI を使用してBedrock AgentCoreと通信
+boto3を使用してBedrock AgentCoreと直接通信
 """
 import json
 import logging
-import subprocess
 import uuid
-import shutil
 from typing import Dict, Any, Optional, List
 from django.conf import settings
 
@@ -20,25 +18,34 @@ class AgentCoreClient:
         """クライアントを初期化"""
         self.region = settings.AWS_REGION
         self.runtime_id = settings.AWS_BEDROCK_AGENT_ID  # Runtime ID (e.g., HrAgent-uVxcle2LzN)
+        self.account_id = "553113730995"  # AWS Account ID
 
-        # agentcore CLI のパスを取得
-        self.agentcore_path = shutil.which('agentcore')
+        # Agent Runtime ARNを構築
+        self.agent_runtime_arn = f"arn:aws:bedrock-agentcore:{self.region}:{self.account_id}:runtime/{self.runtime_id}"
 
-        if self.agentcore_path:
-            logger.info(f"AgentCore CLI found at: {self.agentcore_path}")
+        # boto3クライアントを初期化
+        try:
+            import boto3
+            self.client = boto3.client(
+                'bedrock-agentcore',
+                region_name=self.region
+            )
+            logger.info(f"Bedrock AgentCore client initialized")
             logger.info(f"Region: {self.region}")
             logger.info(f"Runtime ID: {self.runtime_id}")
-        else:
-            logger.error("AgentCore CLI not found in PATH")
+            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
+        except Exception as e:
+            logger.error(f"Failed to initialize boto3 client: {e}", exc_info=True)
+            self.client = None
 
     def is_available(self) -> bool:
         """Bedrock AgentCoreが利用可能かチェック"""
-        has_cli = self.agentcore_path is not None
+        has_client = self.client is not None
         has_runtime_id = bool(self.runtime_id)
 
-        is_avail = has_cli and has_runtime_id
+        is_avail = has_client and has_runtime_id
         if not is_avail:
-            logger.warning(f"Bedrock AgentCore not available: cli={has_cli}, runtime_id={has_runtime_id}")
+            logger.warning(f"Bedrock AgentCore not available: client={has_client}, runtime_id={has_runtime_id}")
 
         return is_avail
 
@@ -64,8 +71,8 @@ class AgentCoreClient:
             エージェントからのレスポンス
         """
         if not self.is_available():
-            logger.warning("AgentCore CLI is not available, returning mock response")
-            return self._mock_response(prompt)
+            logger.error("Bedrock AgentCore is not available")
+            raise Exception("Bedrock AgentCore is not configured properly")
 
         try:
             # セッションIDが指定されていない場合は生成（33文字以上）
@@ -74,73 +81,46 @@ class AgentCoreClient:
 
             # セッションIDが33文字未満の場合は調整
             if len(session_id) < 33:
-                session_id = f"{session_id}-{uuid.uuid4().hex}"[:33]
+                session_id = f"{session_id}-{uuid.uuid4().hex}"[:50]
 
-            logger.info(f"Invoking AgentCore CLI with prompt: {prompt[:100]}...")
+            logger.info(f"Invoking Bedrock AgentCore with prompt: {prompt[:100]}...")
             logger.info(f"Session ID: {session_id}")
-            logger.info(f"Runtime ID: {self.runtime_id}")
+            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
 
             # Payloadを構築
-            payload = {
-                "prompt": prompt,
-                "sessionId": session_id
-            }
-            payload_json = json.dumps(payload)
+            payload = json.dumps({
+                "input": {"prompt": prompt}
+            })
 
-            # agentcore invoke コマンドを実行
-            # AWS_REGION を環境変数として渡す
-            import os
-            env = os.environ.copy()
-            env['AWS_REGION'] = self.region
-
-            result = subprocess.run(
-                [self.agentcore_path, 'invoke', payload_json],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                env=env
+            # Bedrock AgentCoreを呼び出し
+            response = self.client.invoke_agent_runtime(
+                agentRuntimeArn=self.agent_runtime_arn,
+                runtimeSessionId=session_id,
+                payload=payload,
+                qualifier=qualifier
             )
 
-            if result.returncode != 0:
-                error_msg = result.stderr or result.stdout
-                logger.error(f"AgentCore CLI failed: {error_msg}")
-                raise Exception(f"AgentCore CLI error: {error_msg}")
-
-            # 出力をパース
-            output = result.stdout.strip()
-            logger.debug(f"AgentCore CLI output: {output[:500]}")
-
-            # JSON レスポンスを抽出
-            try:
-                # "Response:" の後のJSON部分を抽出
-                if "Response:" in output:
-                    json_start = output.index("Response:") + len("Response:")
-                    json_str = output[json_start:].strip()
-                    response_data = json.loads(json_str)
-                else:
-                    # 全体をJSONとしてパース
-                    response_data = json.loads(output)
-            except json.JSONDecodeError:
-                # JSONパースに失敗した場合は、出力全体をテキストとして扱う
-                logger.warning(f"Failed to parse JSON, using raw output")
-                response_data = {"result": output}
+            # レスポンスボディを読み取り
+            response_body = response['response'].read()
+            response_data = json.loads(response_body)
 
             # Completionテキストを抽出
-            completion_text = response_data.get('result', '') or response_data.get('output', {}).get('text', '') or str(response_data)
+            completion_text = response_data.get('output', {}).get('text', '') if isinstance(response_data.get('output'), dict) else str(response_data.get('output', ''))
 
-            logger.info(f"AgentCore invocation successful")
+            # 空の場合は別のフィールドを試す
+            if not completion_text:
+                completion_text = response_data.get('result', '') or str(response_data)
+
+            logger.info(f"Bedrock AgentCore invocation successful")
             logger.info(f"Completion length: {len(completion_text)}")
 
             return {
                 'completion': completion_text,
                 'raw_result': response_data,
                 'session_id': session_id,
-                'content_type': 'text/plain'
+                'content_type': 'application/json'
             }
 
-        except subprocess.TimeoutExpired:
-            logger.error(f"AgentCore CLI timeout after 120 seconds")
-            raise Exception("AgentCore CLI timeout")
         except Exception as e:
             logger.error(f"Unexpected error invoking AgentCore: {e}", exc_info=True)
             raise
