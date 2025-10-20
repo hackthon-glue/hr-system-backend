@@ -7,11 +7,13 @@
                 "bedrock-agentcore:InvokeAgent",
                 "bedrock-agentcore:Invoke",
                 "bedrock-agentcore:InvokeRuntime",
+                "bedrock-agentcore:InvokeAgentRuntime",
                 "bedrock:InvokeModel",
                 "bedrock:InvokeModelWithResponseStream"
             ],
             "Resource": [
                 "arn:aws:bedrock-agentcore:ap-northeast-1:553113730995:runtime/HrAgent-uVxcle2LzN",
+                "arn:aws:bedrock-agentcore:ap-northeast-1:023487747239:memory/*",
                 "arn:aws:bedrock:ap-northeast-1::foundation-model/*"
             ]
         }
