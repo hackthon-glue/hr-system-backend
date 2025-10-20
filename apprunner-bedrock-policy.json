@@ -1,0 +1,19 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agentcore:InvokeAgent",
+                "bedrock-agentcore:Invoke",
+                "bedrock-agentcore:InvokeRuntime",
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream"
+            ],
+            "Resource": [
+                "arn:aws:bedrock-agentcore:ap-northeast-1:553113730995:runtime/HrAgent-uVxcle2LzN",
+                "arn:aws:bedrock:ap-northeast-1::foundation-model/*"
+            ]
+        }
+    ]
+}

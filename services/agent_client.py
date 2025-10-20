@@ -23,10 +23,10 @@ class AgentCoreClient:
         try:
             import boto3
             self.client = boto3.client(
-                'bedrock-agent-runtime',
+                'bedrock-agentcore',
                 region_name=self.region
             )
-            logger.info(f"Bedrock Agent Runtime client initialized")
+            logger.info(f"Bedrock AgentCore client initialized")
             logger.info(f"Region: {self.region}")
             logger.info(f"Agent ID: {self.agent_id}")
         except Exception as e:
@@ -74,36 +74,27 @@ class AgentCoreClient:
             if not session_id:
                 session_id = str(uuid.uuid4())
 
-            logger.info(f"Invoking Bedrock Agent with prompt: {prompt[:100]}...")
+            logger.info(f"Invoking Bedrock AgentCore with prompt: {prompt[:100]}...")
             logger.info(f"Session ID: {session_id}")
 
-            # Bedrock Agent Runtimeを呼び出し
-            response = self.client.invoke_agent(
-                agentId=self.agent_id,
-                agentAliasId='TSTALIASID',  # Test alias
+            # Bedrock AgentCoreを呼び出し
+            response = self.client.invoke_runtime(
+                runtimeId=self.agent_id,
                 sessionId=session_id,
-                inputText=prompt,
-                enableTrace=enable_trace
+                endpointQualifier=qualifier,
+                inputText=prompt
             )
 
-            # ストリーミングレスポンスを処理
-            completion_text = ""
-            event_stream = response.get('completion', [])
+            # レスポンスを処理
+            result = response.get('result', {})
+            completion_text = result.get('result', '') if isinstance(result, dict) else str(result)
 
-            for event in event_stream:
-                if 'chunk' in event:
-                    chunk = event['chunk']
-                    if 'bytes' in chunk:
-                        text = chunk['bytes'].decode('utf-8')
-                        completion_text += text
-                        logger.debug(f"Received chunk: {text[:100]}")
-
-            logger.info(f"Bedrock Agent invocation successful")
+            logger.info(f"Bedrock AgentCore invocation successful")
             logger.info(f"Completion length: {len(completion_text)}")
 
             return {
                 'completion': completion_text,
-                'raw_result': {'text': completion_text},
+                'raw_result': result,
                 'session_id': session_id,
                 'content_type': 'text/plain'
             }
