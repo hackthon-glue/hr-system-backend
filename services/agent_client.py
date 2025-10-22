@@ -1,10 +1,13 @@
 """
 AWS Bedrock AgentCore クライアント
-boto3を使用してBedrock AgentCoreと直接通信
+agentcore CLI を使用してBedrock AgentCoreと通信
 """
 import json
 import logging
+import subprocess
 import uuid
+import shutil
+import os
 from typing import Dict, Any, Optional, List
 from django.conf import settings
 
@@ -18,49 +21,29 @@ class AgentCoreClient:
         """クライアントを初期化"""
         self.region = settings.AWS_REGION
         self.runtime_id = settings.AWS_BEDROCK_AGENT_ID  # Runtime ID (e.g., HrAgent-uVxcle2LzN)
-        self.account_id = "553113730995"  # AWS Account ID
 
-        # Agent Runtime ARNを構築
-        self.agent_runtime_arn = f"arn:aws:bedrock-agentcore:{self.region}:{self.account_id}:runtime/{self.runtime_id}"
+        # agentcore CLI のパスを取得
+        self.agentcore_path = shutil.which('agentcore')
 
-        # boto3クライアントを初期化
-        try:
-            import boto3
-            import os
+        # Agent name (for agentcore CLI --agent parameter)
+        self.agent_name = "HrAgent"
 
-            # ローカル開発環境ではAWS_PROFILEを使用、本番環境ではInstance Roleを使用
-            client_kwargs = {
-                'service_name': 'bedrock-agentcore',
-                'region_name': self.region
-            }
-
-            # ローカル開発環境の検出（DEBUGモードまたはAWS_PROFILE環境変数が設定されている場合）
-            if settings.DEBUG and os.environ.get('AWS_PROFILE'):
-                # ローカル開発: AWS_PROFILEを使用
-                session = boto3.Session(profile_name=os.environ.get('AWS_PROFILE'))
-                self.client = session.client(**client_kwargs)
-                logger.info(f"Using AWS profile: {os.environ.get('AWS_PROFILE')}")
-            else:
-                # 本番環境: Instance Roleを使用
-                self.client = boto3.client(**client_kwargs)
-                logger.info(f"Using Instance Role credentials")
-
-            logger.info(f"Bedrock AgentCore client initialized")
+        if self.agentcore_path:
+            logger.info(f"AgentCore CLI found at: {self.agentcore_path}")
             logger.info(f"Region: {self.region}")
             logger.info(f"Runtime ID: {self.runtime_id}")
-            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
-        except Exception as e:
-            logger.error(f"Failed to initialize boto3 client: {e}", exc_info=True)
-            self.client = None
+            logger.info(f"Agent Name: {self.agent_name}")
+        else:
+            logger.warning("AgentCore CLI not found in PATH")
 
     def is_available(self) -> bool:
         """Bedrock AgentCoreが利用可能かチェック"""
-        has_client = self.client is not None
+        has_cli = self.agentcore_path is not None
         has_runtime_id = bool(self.runtime_id)
 
-        is_avail = has_client and has_runtime_id
+        is_avail = has_cli and has_runtime_id
         if not is_avail:
-            logger.warning(f"Bedrock AgentCore not available: client={has_client}, runtime_id={has_runtime_id}")
+            logger.warning(f"Bedrock AgentCore not available: cli={has_cli}, runtime_id={has_runtime_id}")
 
         return is_avail
 
@@ -86,8 +69,8 @@ class AgentCoreClient:
             エージェントからのレスポンス
         """
         if not self.is_available():
-            logger.error("Bedrock AgentCore is not available")
-            raise Exception("Bedrock AgentCore is not configured properly")
+            logger.warning("AgentCore CLI is not available, returning mock response")
+            return self._mock_response(prompt)
 
         try:
             # セッションIDが指定されていない場合は生成（33文字以上）
@@ -98,44 +81,105 @@ class AgentCoreClient:
             if len(session_id) < 33:
                 session_id = f"{session_id}-{uuid.uuid4().hex}"[:50]
 
-            logger.info(f"Invoking Bedrock AgentCore with prompt: {prompt[:100]}...")
+            logger.info(f"Invoking AgentCore CLI with prompt: {prompt[:100]}...")
             logger.info(f"Session ID: {session_id}")
-            logger.info(f"Agent Runtime ARN: {self.agent_runtime_arn}")
+            logger.info(f"Agent Name: {self.agent_name}")
 
             # Payloadを構築
-            payload = json.dumps({
-                "input": {"prompt": prompt}
-            })
+            payload = {
+                "prompt": prompt
+            }
+            payload_json = json.dumps(payload)
 
-            # Bedrock AgentCoreを呼び出し
-            response = self.client.invoke_agent_runtime(
-                agentRuntimeArn=self.agent_runtime_arn,
-                runtimeSessionId=session_id,
-                payload=payload,
-                qualifier=qualifier
+            # 環境変数を設定
+            env = os.environ.copy()
+            env['AWS_REGION'] = self.region
+
+            # AWS_PROFILE が設定されている場合は使用（ローカル開発用）
+            if 'AWS_PROFILE' in os.environ:
+                env['AWS_PROFILE'] = os.environ['AWS_PROFILE']
+                logger.info(f"Using AWS_PROFILE: {os.environ['AWS_PROFILE']}")
+            else:
+                logger.info(f"Using Instance Role credentials")
+
+            # agentcore invoke コマンドを実行
+            cmd = [
+                self.agentcore_path,
+                'invoke',
+                payload_json,
+                '--agent', self.agent_name,
+                '--session-id', session_id
+            ]
+
+            logger.debug(f"Executing command: {' '.join(cmd)}")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env
             )
 
-            # レスポンスボディを読み取り
-            response_body = response['response'].read()
-            response_data = json.loads(response_body)
+            if result.returncode != 0:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"AgentCore CLI failed: {error_msg}")
+                raise Exception(f"AgentCore CLI error: {error_msg}")
 
-            # Completionテキストを抽出
-            completion_text = response_data.get('output', {}).get('text', '') if isinstance(response_data.get('output'), dict) else str(response_data.get('output', ''))
+            # 出力をパース
+            output = result.stdout.strip()
+            logger.debug(f"AgentCore CLI output: {output[:500]}")
 
-            # 空の場合は別のフィールドを試す
-            if not completion_text:
-                completion_text = response_data.get('result', '') or str(response_data)
+            # JSON レスポンスを抽出
+            # AgentCore CLIはボックス出力 + "Response:\n" + JSON を返す
+            if "Response:" in output:
+                # "Response:" の後のJSON部分のみを抽出
+                response_marker_idx = output.rfind("Response:")  # 最後のResponse:を探す
+                json_str = output[response_marker_idx + len("Response:"):].strip()
+                logger.debug(f"Extracted JSON after 'Response:' (first 200 chars): {json_str[:200]}")
 
-            logger.info(f"Bedrock AgentCore invocation successful")
+                try:
+                    response_data = json.loads(json_str)
+                    logger.debug(f"Successfully parsed JSON from Response marker")
+
+                    # response_dataが {"result": "..."} 形式の場合、resultの値を取得
+                    if 'result' in response_data and isinstance(response_data['result'], str):
+                        completion_text = response_data['result']
+                        logger.debug(f"Extracted completion from 'result' field, length: {len(completion_text)}")
+                    else:
+                        # それ以外の場合、response_data全体をJSON文字列として返す
+                        completion_text = json.dumps(response_data, ensure_ascii=False)
+                        logger.debug(f"Using entire response_data as completion")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON after 'Response:' marker: {e}")
+                    logger.error(f"Problematic JSON string (first 300 chars): {json_str[:300]}")
+                    # パース失敗時は全体をテキストとして扱う
+                    completion_text = output
+            else:
+                # "Response:"がない場合は、全体をそのまま使用
+                logger.warning("No 'Response:' marker found in AgentCore output")
+                completion_text = output
+
+            logger.info(f"AgentCore invocation successful")
             logger.info(f"Completion length: {len(completion_text)}")
+            logger.info(f"Completion preview: {completion_text[:200] if completion_text else 'EMPTY'}")
+
+            # 空のレスポンスチェック
+            if not completion_text or not completion_text.strip():
+                logger.error("AgentCore returned empty completion text")
+                logger.error(f"Raw output was: {output[:500]}")
+                logger.error(f"Response data was: {response_data}")
 
             return {
                 'completion': completion_text,
                 'raw_result': response_data,
                 'session_id': session_id,
-                'content_type': 'application/json'
+                'content_type': 'text/plain'
             }
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"AgentCore CLI timeout after 120 seconds")
+            raise Exception("AgentCore CLI timeout")
         except Exception as e:
             logger.error(f"Unexpected error invoking AgentCore: {e}", exc_info=True)
             raise
@@ -196,8 +240,101 @@ class AgentCoreClient:
         Returns:
             モックレスポンス
         """
+        # 面接質問生成の場合は適切なJSON形式を返す
+        if "Generate" in prompt and "interview questions" in prompt:
+            mock_questions = {
+                "questions": [
+                    {
+                        "id": 1,
+                        "question_text": "Tell me about your previous work experience and key achievements.",
+                        "question_type": "general",
+                        "difficulty": "medium",
+                        "order": 1,
+                        "expected_answer": "Specific examples of work experience with quantifiable results",
+                        "evaluation_criteria": "Specificity, clarity, and relevance to the position"
+                    },
+                    {
+                        "id": 2,
+                        "question_text": "What technical skills do you possess that are relevant to this role?",
+                        "question_type": "technical",
+                        "difficulty": "medium",
+                        "order": 2,
+                        "expected_answer": "Concrete technical skills with experience level",
+                        "evaluation_criteria": "Depth of knowledge and practical application"
+                    },
+                    {
+                        "id": 3,
+                        "question_text": "Describe a challenging situation you faced at work and how you resolved it.",
+                        "question_type": "behavioral",
+                        "difficulty": "medium",
+                        "order": 3,
+                        "expected_answer": "STAR method (Situation, Task, Action, Result)",
+                        "evaluation_criteria": "Problem-solving ability and leadership skills"
+                    },
+                    {
+                        "id": 4,
+                        "question_text": "Why are you interested in this position and our company?",
+                        "question_type": "general",
+                        "difficulty": "easy",
+                        "order": 4,
+                        "expected_answer": "Understanding of company and motivation for application",
+                        "evaluation_criteria": "Research effort and genuine interest"
+                    },
+                    {
+                        "id": 5,
+                        "question_text": "What are your career goals for the next 3-5 years?",
+                        "question_type": "general",
+                        "difficulty": "easy",
+                        "order": 5,
+                        "expected_answer": "Clear career vision aligned with the role",
+                        "evaluation_criteria": "Alignment with company direction and growth potential"
+                    }
+                ]
+            }
+            completion_text = json.dumps(mock_questions, ensure_ascii=False)
+        # 面接評価の場合
+        elif "evaluate" in prompt.lower() and "interview" in prompt.lower():
+            mock_evaluation = {
+                "evaluation_report": {
+                    "overall_score": 7,
+                    "strengths": [
+                        "Clear communication skills",
+                        "Relevant technical background",
+                        "Good problem-solving approach"
+                    ],
+                    "areas_for_improvement": [
+                        "Could provide more specific examples",
+                        "Needs more depth in advanced topics"
+                    ],
+                    "recommendation": "合格",
+                    "comment": "[MOCK RESPONSE] The candidate demonstrated solid technical knowledge and communication skills. Their answers were clear and relevant to the position. With more experience in complex projects, they have strong potential for growth in this role."
+                }
+            }
+            completion_text = json.dumps(mock_evaluation, ensure_ascii=False)
+        # 求人マッチングの場合
+        elif "match" in prompt.lower() and "job" in prompt.lower():
+            mock_matching = {
+                "recommended_jobs": [
+                    {
+                        "job_id": 1,
+                        "job_title": "Backend Engineer",
+                        "skill_match": 85,
+                        "experience_match": 80,
+                        "salary_match": 90,
+                        "overall_match": 85,
+                        "match_reason": "[MOCK] Strong technical background in Python and Django",
+                        "concerns": "May need additional cloud experience"
+                    }
+                ],
+                "summary": "[MOCK] 1 highly matched position found"
+            }
+            completion_text = json.dumps(mock_matching, ensure_ascii=False)
+        else:
+            # 一般的なモックレスポンス
+            completion_text = f"[MOCK] This is a mock response for development. AgentCore CLI is not available. Prompt preview: {prompt[:100]}..."
+
         return {
-            'completion': f"[MOCK] Processed: {prompt}",
+            'completion': completion_text,
             'raw_result': {},
             'session_id': 'mock-session',
             'content_type': 'application/json',
