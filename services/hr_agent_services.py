@@ -291,13 +291,45 @@ JSON形式のみで応答してください。
 
             try:
                 # JSON文字列をパース
+                logger.info(f"Parsing response_text type: {type(response_text)}")
+                logger.info(f"Response text sample: {response_text[:200]}")
+
                 parsed_data = json.loads(response_text)
+                logger.info(f"First parse result type: {type(parsed_data)}")
 
                 # AgentCore CLIからの出力が2重にJSON化されている場合がある
                 # parsed_dataが文字列の場合は、もう一度パースする
                 if isinstance(parsed_data, str):
-                    logger.debug("Response is a JSON string, parsing again")
-                    parsed_data = json.loads(parsed_data)
+                    logger.info("Response is a JSON string, parsing again")
+                    logger.info(f"String content sample: {parsed_data[:200]}")
+
+                    try:
+                        # まず通常のパースを試みる
+                        parsed_data = json.loads(parsed_data)
+                        logger.info(f"Second parse successful, type: {type(parsed_data)}")
+                    except json.JSONDecodeError as e2:
+                        logger.warning(f"Second parse failed: {e2}, trying with escaped control chars")
+
+                        # エスケープされていない制御文字を修正してリトライ
+                        try:
+                            import re
+                            # 実際の改行/タブ/キャリッジリターンをエスケープシーケンスに置換
+                            # ただし、既にエスケープされている\\nは置換しない
+                            cleaned_str = parsed_data.replace('\\n', '\x00')  # 一時的にマーク
+                            cleaned_str = cleaned_str.replace('\n', '\\n')
+                            cleaned_str = cleaned_str.replace('\r', '\\r')
+                            cleaned_str = cleaned_str.replace('\t', '\\t')
+                            cleaned_str = cleaned_str.replace('\x00', '\\n')  # 元に戻す
+
+                            parsed_data = json.loads(cleaned_str)
+                            logger.info(f"Second parse successful after escaping control chars, type: {type(parsed_data)}")
+                        except json.JSONDecodeError as e3:
+                            logger.error(f"Second parse failed even after escaping: {e3}")
+                            # パース失敗時は文字列をそのまま使用
+                            logger.warning("Using raw string as response data")
+                            parsed_data = {"raw_text": parsed_data}
+
+                logger.info(f"Final parsed_data keys: {parsed_data.keys() if isinstance(parsed_data, dict) else 'not a dict'}")
 
                 # 構造化データとして返す
                 return {

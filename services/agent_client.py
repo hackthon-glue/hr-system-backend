@@ -143,11 +143,15 @@ class AgentCoreClient:
                 logger.debug(f"Extracted JSON after 'Response:' (first 200 chars): {json_str[:200]}")
 
                 try:
-                    response_data = json.loads(json_str)
+                    # AgentCoreは {"result": "actual response text"} の形式で返す
+                    # ただし、resultの値は文字列として返され、その中に実際の改行が含まれている可能性がある
+                    # そのため、strict=Falseを使用して柔軟にパースする
+                    response_data = json.loads(json_str, strict=False)
                     logger.debug(f"Successfully parsed JSON from Response marker")
 
                     # response_dataが {"result": "..."} 形式の場合、resultの値を取得
                     if 'result' in response_data and isinstance(response_data['result'], str):
+                        # resultフィールドの値を取得（これが実際のAgent応答）
                         completion_text = response_data['result']
                         logger.debug(f"Extracted completion from 'result' field, length: {len(completion_text)}")
                     else:
@@ -158,22 +162,9 @@ class AgentCoreClient:
                     logger.error(f"Failed to parse JSON after 'Response:' marker: {e}")
                     logger.error(f"Problematic JSON string (first 300 chars): {json_str[:300]}")
 
-                    # パース失敗時は、制御文字をエスケープしてリトライ
-                    try:
-                        import re
-                        # 制御文字を適切にエスケープ（\n, \r, \t等を保持）
-                        cleaned_json = json_str.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-                        response_data = json.loads(cleaned_json)
-                        logger.info("Successfully parsed JSON after escaping control characters")
-
-                        if 'result' in response_data and isinstance(response_data['result'], str):
-                            completion_text = response_data['result']
-                        else:
-                            completion_text = json.dumps(response_data, ensure_ascii=False)
-                    except json.JSONDecodeError as e2:
-                        logger.error(f"Failed to parse JSON even after cleaning: {e2}")
-                        # 最後の手段：json_strをそのまま使用
-                        completion_text = json_str
+                    # JSON parse失敗：json_strをそのまま返す（これ自体がJSONかもしれない）
+                    completion_text = json_str
+                    response_data = {"raw_response": json_str}
             else:
                 # "Response:"がない場合は、全体をそのまま使用
                 logger.warning("No 'Response:' marker found in AgentCore output")
