@@ -157,8 +157,23 @@ class AgentCoreClient:
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON after 'Response:' marker: {e}")
                     logger.error(f"Problematic JSON string (first 300 chars): {json_str[:300]}")
-                    # パース失敗時は全体をテキストとして扱う
-                    completion_text = output
+
+                    # パース失敗時は、制御文字をエスケープしてリトライ
+                    try:
+                        import re
+                        # 制御文字を適切にエスケープ（\n, \r, \t等を保持）
+                        cleaned_json = json_str.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                        response_data = json.loads(cleaned_json)
+                        logger.info("Successfully parsed JSON after escaping control characters")
+
+                        if 'result' in response_data and isinstance(response_data['result'], str):
+                            completion_text = response_data['result']
+                        else:
+                            completion_text = json.dumps(response_data, ensure_ascii=False)
+                    except json.JSONDecodeError as e2:
+                        logger.error(f"Failed to parse JSON even after cleaning: {e2}")
+                        # 最後の手段：json_strをそのまま使用
+                        completion_text = json_str
             else:
                 # "Response:"がない場合は、全体をそのまま使用
                 logger.warning("No 'Response:' marker found in AgentCore output")
