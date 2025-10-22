@@ -130,6 +130,10 @@ class AgentCoreClient:
             output = result.stdout.strip()
             logger.debug(f"AgentCore CLI output: {output[:500]}")
 
+            # 変数を初期化
+            response_data = {}
+            completion_text = ""
+
             # JSON レスポンスを抽出
             # AgentCore CLIはボックス出力 + "Response:\n" + JSON を返す
             if "Response:" in output:
@@ -168,7 +172,6 @@ class AgentCoreClient:
             if not completion_text or not completion_text.strip():
                 logger.error("AgentCore returned empty completion text")
                 logger.error(f"Raw output was: {output[:500]}")
-                logger.error(f"Response data was: {response_data}")
 
             return {
                 'completion': completion_text,
