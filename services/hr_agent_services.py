@@ -294,8 +294,34 @@ JSON形式のみで応答してください。
                 logger.info(f"Parsing response_text type: {type(response_text)}")
                 logger.info(f"Response text sample: {response_text[:200]}")
 
-                parsed_data = json.loads(response_text)
-                logger.info(f"First parse result type: {type(parsed_data)}")
+                # まず通常のパースを試みる
+                try:
+                    parsed_data = json.loads(response_text)
+                    logger.info(f"First parse result type: {type(parsed_data)}")
+                except json.JSONDecodeError as first_parse_error:
+                    logger.warning(f"First parse failed: {first_parse_error}, trying to fix control characters")
+                    logger.debug(f"Original text (first 500 chars): {repr(response_text[:500])}")
+
+                    # 制御文字をエスケープしてリトライ
+                    # 既にエスケープされている\\nは保護する
+                    cleaned_text = response_text.replace('\\n', '\x00')  # 一時的にマーク
+                    cleaned_text = cleaned_text.replace('\\r', '\x01')
+                    cleaned_text = cleaned_text.replace('\\t', '\x02')
+
+                    # 実際の制御文字をエスケープ
+                    cleaned_text = cleaned_text.replace('\n', '\\n')
+                    cleaned_text = cleaned_text.replace('\r', '\\r')
+                    cleaned_text = cleaned_text.replace('\t', '\\t')
+
+                    # 保護したエスケープシーケンスを復元
+                    cleaned_text = cleaned_text.replace('\x00', '\\n')
+                    cleaned_text = cleaned_text.replace('\x01', '\\r')
+                    cleaned_text = cleaned_text.replace('\x02', '\\t')
+
+                    logger.debug(f"Cleaned text (first 500 chars): {repr(cleaned_text[:500])}")
+
+                    parsed_data = json.loads(cleaned_text)
+                    logger.info(f"First parse successful after fixing control characters, type: {type(parsed_data)}")
 
                 # AgentCore CLIからの出力が2重にJSON化されている場合がある
                 # parsed_dataが文字列の場合は、もう一度パースする
