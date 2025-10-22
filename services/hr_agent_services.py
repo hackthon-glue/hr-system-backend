@@ -293,6 +293,12 @@ JSON形式のみで応答してください。
                 # JSON文字列をパース
                 parsed_data = json.loads(response_text)
 
+                # AgentCore CLIからの出力が2重にJSON化されている場合がある
+                # parsed_dataが文字列の場合は、もう一度パースする
+                if isinstance(parsed_data, str):
+                    logger.debug("Response is a JSON string, parsing again")
+                    parsed_data = json.loads(parsed_data)
+
                 # 構造化データとして返す
                 return {
                     'success': True,
